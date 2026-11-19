@@ -39,7 +39,7 @@ describe('Testes de integração da API', () => {
     });
 
     const login = await request(app)
-      .post('/v1/login')
+      .post('/v1/user/token')
       .send({
         email: authEmail,
         password: 'TesteJest@2026',
@@ -95,7 +95,7 @@ describe('Testes de integração da API', () => {
   describe('Autenticação JWT', () => {
     test('deve realizar login com credenciais corretas', async () => {
       const response = await request(app)
-        .post('/v1/login')
+        .post('/v1/user/token')
         .send({
           email: authEmail,
           password: 'TesteJest@2026',
@@ -103,18 +103,18 @@ describe('Testes de integração da API', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.token).toBeTruthy();
-      expect(response.body.user.email).toBe(authEmail);
+      expect(response.body.user).toBeUndefined();
     });
 
     test('deve rejeitar senha incorreta', async () => {
       const response = await request(app)
-        .post('/v1/login')
+        .post('/v1/user/token')
         .send({
           email: authEmail,
           password: 'SenhaIncorreta',
         });
 
-      expect(response.status).toBe(401);
+      expect(response.status).toBe(400);
     });
 
     test('deve bloquear acesso sem token', async () => {
@@ -125,7 +125,7 @@ describe('Testes de integração da API', () => {
           slug: `sem-token-${unique}`,
         });
 
-      expect(response.status).toBe(401);
+      expect(response.status).toBe(400);
     });
 
     test('deve rejeitar token inválido', async () => {
@@ -137,12 +137,27 @@ describe('Testes de integração da API', () => {
           slug: `token-invalido-${unique}`,
         });
 
-      expect(response.status).toBe(401);
+      expect(response.status).toBe(400);
     });
   });
 
   // USUÁRIOS
   describe('CRUD de usuários', () => {
+    test('deve rejeitar cadastro quando as senhas não conferem', async () => {
+      const response = await request(app)
+        .post('/v1/user')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          firstname: 'Usuario',
+          surname: 'Teste',
+          email: `senhas.diferentes.${unique}@teste.com`,
+          password: 'SenhaTeste@2026',
+          confirmPassword: 'OutraSenha@2026',
+        });
+
+      expect(response.status).toBe(400);
+    });
+
     test('deve cadastrar usuário', async () => {
       const response = await request(app)
         .post('/v1/user')
@@ -152,6 +167,7 @@ describe('Testes de integração da API', () => {
           surname: 'Teste',
           email: createdEmail,
           password: 'SenhaTeste@2026',
+          confirmPassword: 'SenhaTeste@2026',
         });
 
       expect(response.status).toBe(201);
@@ -185,8 +201,8 @@ describe('Testes de integração da API', () => {
           firstname: 'Usuario Atualizado',
         });
 
-      expect(response.status).toBe(200);
-      expect(response.body.firstname).toBe('Usuario Atualizado');
+      expect(response.status).toBe(204);
+      expect(response.text).toBe('');
     });
 
     test('deve excluir usuário', async () => {
@@ -194,7 +210,7 @@ describe('Testes de integração da API', () => {
         .delete(`/v1/user/${createdUserId}`)
         .set('Authorization', `Bearer ${token}`);
 
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(204);
 
       createdUserId = null;
     });
@@ -225,6 +241,36 @@ describe('Testes de integração da API', () => {
       expect(Array.isArray(response.body)).toBe(true);
     });
 
+    test('deve pesquisar categorias com paginação, campos e filtro de menu', async () => {
+      const response = await request(app)
+        .get('/v1/category/search?limit=12&page=1&fields=name,slug&use_in_menu=true');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toHaveProperty('data');
+      expect(response.body).toHaveProperty('total');
+      expect(response.body).toHaveProperty('limit', 12);
+      expect(response.body).toHaveProperty('page', 1);
+      expect(response.body.data.every((item) => item.name && item.slug)).toBe(true);
+      expect(response.body.data.every((item) => item.use_in_menu === undefined)).toBe(true);
+    });
+
+    test('deve retornar todas as categorias quando limit for -1', async () => {
+      const response = await request(app)
+        .get('/v1/category/search?limit=-1&page=99');
+
+      expect(response.status).toBe(200);
+      expect(response.body.limit).toBe(-1);
+      expect(response.body.page).toBe(1);
+      expect(response.body.data.length).toBe(response.body.total);
+    });
+
+    test('deve rejeitar limite inválido na pesquisa de categorias', async () => {
+      const response = await request(app)
+        .get('/v1/category/search?limit=0');
+
+      expect(response.status).toBe(400);
+    });
+
     test('deve consultar categoria por ID', async () => {
       const response = await request(app)
         .get(`/v1/category/${categoryId}`);
@@ -241,8 +287,8 @@ describe('Testes de integração da API', () => {
           name: `Categoria Atualizada ${unique}`,
         });
 
-      expect(response.status).toBe(200);
-      expect(response.body.name).toBe(`Categoria Atualizada ${unique}`);
+      expect(response.status).toBe(204);
+      expect(response.text).toBe('');
     });
   });
 
