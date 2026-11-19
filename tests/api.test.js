@@ -20,6 +20,8 @@ describe('Testes de integração da API', () => {
   let createdUserId;
   let categoryId;
   let productId;
+  let productImageId;
+  let productOptionId;
 
   const unique = Date.now();
 
@@ -293,117 +295,130 @@ describe('Testes de integração da API', () => {
   });
 
   // PRODUTOS
-  describe('CRUD e filtros de produtos', () => {
-    test('deve cadastrar produto com imagem, opção e categoria', async () => {
+  describe('CRUD e filtros de produtos conforme o enunciado', () => {
+    const tinyPng = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/XioAAAAASUVORK5CYII=';
+
+    test('deve cadastrar produto com imagem Base64, opção e categoria', async () => {
       const response = await request(app)
         .post('/v1/product')
         .set('Authorization', `Bearer ${token}`)
         .send({
+          enabled: true,
           name: `Produto Jest ${unique}`,
           slug: `produto-jest-${unique}`,
-          description: 'Produto criado pelo teste automatizado',
+          stock: 15,
+          description: 'Descrição exclusiva para filtro de teste automatizado',
           price: 150,
           price_with_discount: 120,
-          categoryIds: [categoryId],
-          images: [
-            'https://exemplo.com/imagem-teste.jpg',
-          ],
-          options: [
-            {
-              title: 'Tamanho',
-              values: ['P', 'M', 'G'],
-            },
-          ],
+          category_ids: [categoryId],
+          images: [{ type: 'image/png', content: tinyPng }],
+          options: [{ title: 'Tamanho', shape: 'square', radius: '4px', type: 'text', values: ['P', 'M', 'G'] }],
         });
 
       expect(response.status).toBe(201);
       expect(response.body.name).toBe(`Produto Jest ${unique}`);
-      expect(response.body.categories.length).toBeGreaterThan(0);
-      expect(response.body.images.length).toBe(1);
-      expect(response.body.options.length).toBe(1);
-
+      expect(response.body.category_ids).toContain(categoryId);
+      expect(response.body.images).toHaveLength(1);
+      expect(response.body.images[0].content).toMatch(/^\/uploads\/products\//);
+      expect(response.body.options).toHaveLength(1);
+      expect(response.body.options[0].values).toBe('P,M,G');
+      expect(response.body.options[0].radius).toBe(4);
       productId = response.body.id;
+      productImageId = response.body.images[0].id;
+      productOptionId = response.body.options[0].id;
     });
 
-    test('deve listar produtos com paginação', async () => {
+    test('deve pesquisar produtos pelo endpoint oficial e formato de paginação', async () => {
       const response = await request(app)
-        .get('/v1/product?page=1&limit=10');
+        .get('/v1/product/search?match=Descrição%20exclusiva&page=1&limit=12');
 
       expect(response.status).toBe(200);
-      expect(Array.isArray(response.body.data)).toBe(true);
-      expect(response.body.pagination).toBeDefined();
-      expect(response.body.pagination.currentPage).toBe(1);
+      expect(response.body).toHaveProperty('data');
+      expect(response.body).toHaveProperty('total');
+      expect(response.body).toHaveProperty('limit', 12);
+      expect(response.body).toHaveProperty('page', 1);
+      expect(response.body.data.some((item) => item.id === productId)).toBe(true);
     });
 
-    test('deve consultar produto por ID', async () => {
+    test('deve filtrar por múltiplas categorias e faixa de preço', async () => {
       const response = await request(app)
-        .get(`/v1/product/${productId}`);
+        .get(`/v1/product/search?category_ids=${categoryId}&price-range=100-200`);
 
+      expect(response.status).toBe(200);
+      expect(response.body.data.some((item) => item.id === productId)).toBe(true);
+    });
+
+    test('deve filtrar por valor de opção', async () => {
+      const response = await request(app)
+        .get(`/v1/product/search?option[${productOptionId}]=M`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.data.some((item) => item.id === productId)).toBe(true);
+    });
+
+    test('deve limitar os campos retornados', async () => {
+      const response = await request(app)
+        .get('/v1/product/search?fields=name,images,price&match=Descrição%20exclusiva');
+
+      expect(response.status).toBe(200);
+      const product = response.body.data.find((item) => item.id === productId);
+      expect(product).toBeDefined();
+      expect(Object.keys(product).sort()).toEqual(['id', 'images', 'name', 'price'].sort());
+    });
+
+    test('deve retornar todos os produtos quando limit for -1', async () => {
+      const response = await request(app)
+        .get('/v1/product/search?limit=-1&page=99');
+
+      expect(response.status).toBe(200);
+      expect(response.body.limit).toBe(-1);
+      expect(response.body.page).toBe(1);
+      expect(response.body.data.length).toBe(response.body.total);
+    });
+
+    test('deve consultar produto por ID com category_ids, imagens e opções', async () => {
+      const response = await request(app).get(`/v1/product/${productId}`);
       expect(response.status).toBe(200);
       expect(response.body.id).toBe(productId);
+      expect(response.body.category_ids).toContain(categoryId);
+      expect(response.body.images[0].content).toBeTruthy();
+      expect(response.body.options[0].values).toBe('P,M,G');
     });
 
-    test('deve filtrar produto por nome', async () => {
-      const response = await request(app)
-        .get(`/v1/product?search=Produto%20Jest%20${unique}`);
-
-      expect(response.status).toBe(200);
-      expect(response.body.data.length).toBe(1);
-      expect(response.body.data[0].id).toBe(productId);
-    });
-
-    test('deve filtrar produto por faixa de preço', async () => {
-      const response = await request(app)
-        .get('/v1/product?min_price=100&max_price=200');
-
-      expect(response.status).toBe(200);
-
-      const found = response.body.data.some(
-        (product) => product.id === productId
-      );
-
-      expect(found).toBe(true);
-    });
-
-    test('deve filtrar produto por categoria', async () => {
-      const response = await request(app)
-        .get(`/v1/product?category_id=${categoryId}`);
-
-      expect(response.status).toBe(200);
-
-      const found = response.body.data.some(
-        (product) => product.id === productId
-      );
-
-      expect(found).toBe(true);
-    });
-
-    test('deve rejeitar página inválida', async () => {
-      const response = await request(app)
-        .get('/v1/product?page=0');
-
-      expect(response.status).toBe(400);
-    });
-
-    test('deve rejeitar ordenação inválida', async () => {
-      const response = await request(app)
-        .get('/v1/product?order=invalido');
-
-      expect(response.status).toBe(400);
-    });
-
-    test('deve atualizar produto', async () => {
+    test('deve atualizar imagens e opções por ID sem substituir toda a coleção', async () => {
       const response = await request(app)
         .put(`/v1/product/${productId}`)
         .set('Authorization', `Bearer ${token}`)
         .send({
           description: 'Produto atualizado pelo Jest',
+          images: [{ id: productImageId, deleted: true }],
+          options: [
+            { id: productOptionId, radius: '10px', values: ['42/43', '44/45'] },
+            { title: 'Cor', type: 'color', values: ['#000', '#333'] },
+          ],
         });
 
-      expect(response.status).toBe(200);
-      expect(response.body.description).toBe(
-        'Produto atualizado pelo Jest'
-      );
+      expect(response.status).toBe(204);
+      expect(response.text).toBe('');
+      const updated = await request(app).get(`/v1/product/${productId}`);
+      expect(updated.body.description).toBe('Produto atualizado pelo Jest');
+      expect(updated.body.images).toHaveLength(0);
+      expect(updated.body.options).toHaveLength(2);
+      expect(updated.body.options.find((item) => item.id === productOptionId).radius).toBe(10);
+    });
+
+    test('deve rejeitar parâmetros inválidos de pesquisa', async () => {
+      const response = await request(app).get('/v1/product/search?price-range=200-100');
+      expect(response.status).toBe(400);
+    });
+
+    test('deve excluir produto com resposta 204', async () => {
+      const response = await request(app)
+        .delete(`/v1/product/${productId}`)
+        .set('Authorization', `Bearer ${token}`);
+      expect(response.status).toBe(204);
+      expect(response.text).toBe('');
+      productId = null;
     });
   });
 });
