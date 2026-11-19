@@ -7,32 +7,29 @@ const ProductOption = sequelize.define('ProductOption', {
     primaryKey: true,
     autoIncrement: true,
   },
-
   title: {
     type: DataTypes.STRING(100),
     allowNull: false,
   },
-
   shape: {
-    type: DataTypes.STRING(50),
-    allowNull: true,
+    type: DataTypes.ENUM('square', 'circle'),
+    allowNull: false,
+    defaultValue: 'square',
   },
-
   radius: {
-    type: DataTypes.STRING(50),
-    allowNull: true,
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0,
   },
-
   type: {
-    type: DataTypes.STRING(50),
-    allowNull: true,
+    type: DataTypes.ENUM('text', 'color'),
+    allowNull: false,
+    defaultValue: 'text',
   },
-
   values: {
-    type: DataTypes.JSON,
+    type: DataTypes.STRING,
     allowNull: false,
   },
-
   product_id: {
     type: DataTypes.INTEGER,
     allowNull: false,

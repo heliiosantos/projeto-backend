@@ -8,13 +8,22 @@ const {
 
 const { Op } = require('sequelize');
 
+function normalizeOptionValues(values) {
+  if (Array.isArray(values)) return values.join(',');
+  if (typeof values === 'string') return values;
+  return '';
+}
+
 class ProductController {
   // Cadastrar produto
   async create(req, res) {
     try {
       const {
+        enabled,
         name,
         slug,
+        use_in_menu,
+        stock,
         description,
         price,
         price_with_discount,
@@ -23,9 +32,9 @@ class ProductController {
         options,
       } = req.body;
 
-      if (!name || !slug || price === undefined) {
+      if (!name || !slug || price === undefined || price_with_discount === undefined) {
         return res.status(400).json({
-          message: 'Nome, slug e preço são obrigatórios.',
+          message: 'Nome, slug, preço e preço com desconto são obrigatórios.',
         });
       }
 
@@ -104,11 +113,14 @@ class ProductController {
 
       // Criar produto
       const product = await Product.create({
+        enabled: enabled ?? false,
         name,
         slug,
-        description,
+        use_in_menu: use_in_menu ?? false,
+        stock: stock ?? 0,
+        description: description ?? null,
         price,
-        price_with_discount: price_with_discount ?? 0,
+        price_with_discount,
       });
 
       // Associar categorias
@@ -120,7 +132,7 @@ class ProductController {
       if (images && images.length > 0) {
         await ProductImage.bulkCreate(
           images.map((image) => ({
-            content: image.trim(),
+            path: image.trim(),
             product_id: product.id,
           }))
         );
@@ -131,10 +143,10 @@ class ProductController {
         await ProductOption.bulkCreate(
           options.map((option) => ({
             title: option.title.trim(),
-            shape: option.shape ?? null,
-            radius: option.radius ?? null,
-            type: option.type ?? null,
-            values: option.values,
+            shape: option.shape ?? 'square',
+            radius: option.radius === undefined ? 0 : Number.parseInt(String(option.radius), 10),
+            type: option.type ?? 'text',
+            values: normalizeOptionValues(option.values),
             product_id: product.id,
           }))
         );
@@ -397,8 +409,11 @@ class ProductController {
       }
 
       const {
+        enabled,
         name,
         slug,
+        use_in_menu,
+        stock,
         description,
         price,
         price_with_discount,
@@ -408,8 +423,11 @@ class ProductController {
       } = req.body;
 
       if (
+        enabled === undefined &&
         name === undefined &&
         slug === undefined &&
+        use_in_menu === undefined &&
+        stock === undefined &&
         description === undefined &&
         price === undefined &&
         price_with_discount === undefined &&
@@ -500,8 +518,11 @@ class ProductController {
 
       // Atualizar dados do produto
       await product.update({
+        ...(enabled !== undefined && { enabled }),
         ...(name !== undefined && { name }),
         ...(slug !== undefined && { slug }),
+        ...(use_in_menu !== undefined && { use_in_menu }),
+        ...(stock !== undefined && { stock }),
         ...(description !== undefined && { description }),
         ...(price !== undefined && { price }),
         ...(price_with_discount !== undefined && {
@@ -523,7 +544,7 @@ class ProductController {
         if (images.length > 0) {
           await ProductImage.bulkCreate(
             images.map((image) => ({
-              content: image.trim(),
+              path: image.trim(),
               product_id: product.id,
             }))
           );
@@ -540,10 +561,10 @@ class ProductController {
           await ProductOption.bulkCreate(
             options.map((option) => ({
               title: option.title.trim(),
-              shape: option.shape ?? null,
-              radius: option.radius ?? null,
-              type: option.type ?? null,
-              values: option.values,
+              shape: option.shape ?? 'square',
+              radius: option.radius === undefined ? 0 : Number.parseInt(String(option.radius), 10),
+              type: option.type ?? 'text',
+              values: normalizeOptionValues(option.values),
               product_id: product.id,
             }))
           );

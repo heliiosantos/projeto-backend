@@ -7,12 +7,15 @@ const ProductImage = sequelize.define('ProductImage', {
     primaryKey: true,
     autoIncrement: true,
   },
-
-  content: {
+  enabled: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+  },
+  path: {
     type: DataTypes.STRING(255),
     allowNull: false,
   },
-
   product_id: {
     type: DataTypes.INTEGER,
     allowNull: false,
